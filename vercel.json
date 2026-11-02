@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["fra1"],
+  "functions": {
+    "api/relay.ts": { "maxDuration": 300 },
+    "api/voice.ts": { "maxDuration": 10 },
+    "api/calls.ts": { "maxDuration": 10 },
+    "api/config.ts": { "maxDuration": 10 }
+  }
+}
