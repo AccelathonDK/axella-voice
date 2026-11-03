@@ -1,7 +1,8 @@
-// POST /api/voice – Twilio's "A call comes in" webhook. Answers with ConversationRelay TwiML.
+// POST /api/voice – Twilio's "A call comes in" webhook. Answers with ConversationRelay TwiML – except for a caller the
+// Mac mini marked private: a fixed message and hang up. No AI, no transcription, no summary; the record says who and when.
 import crypto from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { digits, getConfig, LIMITS, lookup, publicUrl, readBody, redis, twilioSignatureOk } from '../lib/util.js'
+import { digits, getConfig, K, LIMITS, lookup, privateMessages, publicUrl, readBody, RECORD_TTL, redis, twilioSignatureOk } from '../lib/util.js'
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
@@ -50,6 +51,24 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     || (who?.tier !== 'VIP' && !(await under(`axella:rate:${d}:${hour}`, LIMITS.perNumberHour)))) {
     console.log('rate-limited', d === 'anonymous' ? 'anonymous' : 'number')   // never the number itself
     return busy(res)
+  }
+
+  if (who?.private) {
+    const danishP = from.startsWith('+45') || !from.startsWith('+')
+    const msg = privateMessages(cfg.owner)
+    try {
+      const id = 'call-' + sid
+      await redis.set(K.call(id), {
+        id, started: new Date().toISOString(), duration_s: null, private: true,
+        from: { name: who.first || null, said_name: null, caller_id_match: true, number: from || null, tier: who.tier || null },
+        context: null, priority: 'p3', urgent_claimed: false, urgent_capped: false, summary: '', callback: null, sms_draft: null,
+        lang: danishP ? 'da' : 'en', transcript: [],
+      }, { ex: RECORD_TTL })
+      await redis.sadd(K.calls, id)
+    } catch { /* Redis down: the caller still hears the message */ }
+    return xml(res, danishP
+      ? `<Say language="da-DK" voice="Polly.Naja">${esc(msg.da)}</Say><Hangup/>`
+      : `<Say language="en-US" voice="Polly.Joanna">${esc(msg.en)}</Say><Hangup/>`)
   }
 
   // One-time ticket for the WebSocket: the relay only accepts a session whose ticket matches this CallSid.

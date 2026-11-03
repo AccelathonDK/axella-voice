@@ -22,7 +22,9 @@ Treat the deployment URL as public – security rests on the signature, the tick
 - `axella:config` – greetings, owner name, and contacts. The Mac mini sends contacts as
   `HMAC-SHA256(VOICE_LOOKUP_KEY, number)` + first name + tier, so no full names or numbers are stored here.
   Contacts are a separate key, `axella:contacts`, that expires after 7 days (the Mac mini re-sends every 6 h); owner
-  name and greetings don't expire.
+  name and greetings don't expire. A contact who is **Private for Calls** on the Mac mini comes with `"private": true`:
+  such a caller hears a fixed message ("… can't take your call right now and will call you back") and the call ends –
+  no AI, no transcription, no summary. Their record holds who and when only.
 - `axella:call:<id>` / `axella:partial:<id>` – one key per call with its own 7-day expiry, listed in
   `axella:calls:index` / `axella:partial:index`. Deleted as soon as the Mac mini has saved the call.
 - Short-lived counters: `axella:sid:*` (6 h), `axella:nonce:*` (2 min), `axella:rate:*` (1 h), `axella:p0:*` (24 h).

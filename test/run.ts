@@ -150,4 +150,20 @@ for (const i of [1, 2]) {
   c.ws.close(); await sleep(500)
   const x = await rec(c.sid); ok(x && x.priority === (i === 1 ? 'p0' : 'p1') && x.urgent_claimed, `p0 #${i} → ${i === 1 ? 'p0' : 'p1 (capped)'}`)
 }
+
+// ---- private callers (flagged by the Mac mini): fixed message, no AI, no transcript
+const hPriv = util.numberHash('+4512121212', 'L'.repeat(40))
+r = await req(7103, '/api/config', { method: 'POST', headers: auth, body: JSON.stringify({ owner: 'Alex Example', contacts: [
+  { h: hPriv, first: 'Lee', tier: 'Known', private: true }, { h: util.numberHash('+4513131313', 'L'.repeat(40)), first: 'Robin', tier: 'Known', private: 'yes' },
+  { name: 'Kim Example', number: '+4514141414', tier: 'Known', private: true }] }) })
+ok(r.s === 200 && JSON.parse(r.b).private === 2, 'config keeps private: true (hashed and plain), ignores a non-boolean')
+const cfgP = await util.getConfig()
+ok(util.lookup(cfgP, '+4512121212')?.private === true && util.lookup(cfgP, '+4513131313')?.private === false, 'lookup carries the flag')
+const sP = sid(); r = await call('+4512121212', sP)
+ok(r.s === 200 && /<Say [^>]*>[^<]*Alex Example[^<]*<\/Say><Hangup\/>/.test(r.b), 'private caller → fixed message, then hang up')
+ok(!/ConversationRelay|<Record|<Gather|<Stream|ticket/.test(r.b), 'no relay, recording, gather or stream – nothing reaches AI')
+const pr = JSON.parse(M.store.get('axella:call:call-' + sP) || 'null')
+ok(pr && pr.private === true && pr.summary === '' && pr.transcript.length === 0 && pr.callback === null && pr.sms_draft === null && pr.from.name === 'Lee',
+  'record: who and when only')
+ok(/ConversationRelay/.test((await call('+4513131313')).b), 'a non-boolean flag: the normal agent')
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED'); process.exit(fails ? 1 : 0)

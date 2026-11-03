@@ -1,6 +1,7 @@
 // POST /api/config – the Mac mini pushes greetings and the contact list. Kept in Redis only; contacts expire after 7 days.
 // Preferred contact form: {h, first, tier} – h = HMAC-SHA256(VOICE_LOOKUP_KEY, E.164 number), first name only, so no
 // full names or numbers leave the Mac. The plain form {name, number, tier} is still accepted from older Mac minis.
+// "private": true marks a contact who is Private for calls on the Mac mini – answered without AI (api/voice.ts).
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONTACTS_TTL, DEFAULT_CONFIG, defaultGreetings, macMiniOk, readBody, redis } from '../lib/util.js'
 
@@ -17,9 +18,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const contacts = (Array.isArray(p.contacts) ? p.contacts : []).slice(0, 3000).map((c: any) => {
     const tier = str(c?.tier, 10) === 'VIP' ? 'VIP' : 'Known'
     const h = str(c?.h, 64)
-    if (/^[0-9a-f]{64}$/.test(h)) return { h, first: str(c.first, 40), tier }
+    // Private for calls on the Mac mini: the agent answers with a fixed message – no AI (api/voice.ts). Boolean only.
+    const priv = c?.private === true ? { private: true } : {}
+    if (/^[0-9a-f]{64}$/.test(h)) return { h, first: str(c.first, 40), tier, ...priv }
     const name = str(c?.name, 80), number = str(c?.number, 30)
-    return name && number ? { name, number, tier } : null
+    return name && number ? { name, number, tier, ...priv } : null
   }).filter(Boolean)
   const cfg = {
     owner,
@@ -31,5 +34,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   await redis.set('axella:contacts', contacts, { ex: CONTACTS_TTL })
   // the greetings callers actually hear go back to the Mac mini, so the dashboard shows the real ones
   res.end(JSON.stringify({ ok: true, contacts: contacts.length, hashed: contacts.filter((c: any) => c.h).length,
+    private: contacts.filter((c: any) => c.private).length,
     lookup_key: (process.env.VOICE_LOOKUP_KEY || '').length >= 32, greeting_da: cfg.greeting_da, greeting_en: cfg.greeting_en }))
 }

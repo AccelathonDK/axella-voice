@@ -59,7 +59,7 @@ export async function readBody(req: IncomingMessage, max = 200_000): Promise<str
 
 /** A contact as pushed by the Mac mini. Hashed form (preferred): h = HMAC-SHA256(VOICE_LOOKUP_KEY, E.164 number),
  *  first = first name only. Plain form (older Mac mini, or no lookup key yet): name + number. */
-export interface Contact { h?: string; first?: string; name?: string; number?: string; tier: 'VIP' | 'Known' | string }
+export interface Contact { h?: string; first?: string; name?: string; number?: string; tier: 'VIP' | 'Known' | string; private?: boolean }
 export interface Config {
   greeting_da: string; greeting_en: string
   contacts: Contact[]          // pushed by the Mac mini from Contacts/contacts.md – never committed here
@@ -75,6 +75,14 @@ export function defaultGreetings(owner: string) {
   }
 }
 const OWNER = process.env.OWNER_NAME || 'the person you called'
+/** What a private caller hears (fixed text – no AI, no transcription, no summary). */
+export function privateMessages(owner: string) {
+  const f = firstName(owner)
+  return {
+    da: `Hej, du har ringet til ${owner}. ${f} kan ikke tage telefonen lige nu og ringer tilbage så hurtigt som muligt. Tak.`,
+    en: `Hi, you've reached ${owner}. ${f} can't take your call right now and will call you back as soon as possible. Thank you.`,
+  }
+}
 export const DEFAULT_CONFIG: Config = { owner: OWNER, ...defaultGreetings(OWNER), contacts: [] }
 export async function getConfig(): Promise<Config> {
   try {
@@ -93,7 +101,7 @@ export const e164 = (n?: string | null) => { const d = digits(n); return d.lengt
 export const numberHash = (e: string, key: string) => crypto.createHmac('sha256', key).update(e, 'utf8').digest('hex')
 
 /** Exact number match only (no suffix matching – a number from another country must not match a Danish contact). */
-export function lookup(cfg: Config, from?: string | null): { first: string; tier: string } | null {
+export function lookup(cfg: Config, from?: string | null): { first: string; tier: string; private: boolean } | null {
   const e = e164(from)
   if (!e) return null
   const key = process.env.VOICE_LOOKUP_KEY || ''
@@ -101,7 +109,7 @@ export function lookup(cfg: Config, from?: string | null): { first: string; tier
   for (const c of cfg.contacts) {
     const hit = (h && c.h && c.h.length === h.length && crypto.timingSafeEqual(Buffer.from(c.h), Buffer.from(h)))
       || (c.number && e164(c.number) === e)
-    if (hit) return { first: (c.first || firstName(c.name || '')).slice(0, 40), tier: String(c.tier || 'Known') }
+    if (hit) return { first: (c.first || firstName(c.name || '')).slice(0, 40), tier: String(c.tier || 'Known'), private: c.private === true }
   }
   return null
 }
